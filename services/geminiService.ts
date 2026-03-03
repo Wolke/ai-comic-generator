@@ -314,6 +314,31 @@ export const buildPageStoryboardPrompt = (
 
     let prompt = `Generate a COMPLETE comic/manga page with ${panelCount} panel(s).\n\n`;
 
+    // Build global character mapping (anonymized → real name)
+    // Collect all unique character appearances across panels
+    const globalCharMap = new Map<string, string[]>(); // charName → list of panels where they appear
+    page.panels.forEach((panel, idx) => {
+        panel.sceneCharacters.forEach((charName, charIdx) => {
+            const label = String.fromCharCode(65 + charIdx); // A, B, C...
+            if (!globalCharMap.has(charName)) {
+                globalCharMap.set(charName, []);
+            }
+        });
+    });
+
+    // Add character identity section so the model knows who is who
+    if (globalCharMap.size > 0) {
+        prompt += `## CHARACTER IDENTITY\n`;
+        prompt += `The following characters appear in this page. When the panel descriptions say "Character A", "Character B", etc., refer to the mapping below and USE THE PROVIDED REFERENCE IMAGES for their appearance:\n`;
+        const allChars = Array.from(globalCharMap.keys());
+        allChars.forEach((charName) => {
+            const char = characters.find(c => c.name === charName);
+            const hasImage = !!char?.imageBase64;
+            prompt += `- **${charName}**${hasImage ? ' (reference image provided — MUST match this appearance)' : ''}\n`;
+        });
+        prompt += '\n';
+    }
+
     // Describe each panel
     prompt += `## PAGE LAYOUT (${panelCount} panels)\n\n`;
 
@@ -327,6 +352,15 @@ export const buildPageStoryboardPrompt = (
         }[panel.panelType];
 
         prompt += `### Panel ${panelNum} [${typeHint}]\n`;
+
+        // Add character mapping for this panel
+        if (panel.sceneCharacters.length > 0) {
+            const mapping = panel.sceneCharacters
+                .map((name, i) => `Character ${String.fromCharCode(65 + i)} = ${name}`)
+                .join(', ');
+            prompt += `**Characters**: ${mapping}\n`;
+        }
+
         prompt += `**Visual**: ${panel.imagePrompt}\n`;
 
         // Add dialogues as speech bubbles
@@ -334,13 +368,10 @@ export const buildPageStoryboardPrompt = (
             prompt += `**Dialogue bubbles**:\n`;
             panel.dialogues.forEach(d => {
                 if (d.type === 'sfx') {
-                    // SFX: large stylized characters only, no name, no parentheses
                     prompt += `  💥 SFX: ${d.text}  (render as LARGE bold stylized text overlaying the panel)\n`;
                 } else if (d.type === 'narration') {
-                    // Narration box: no character name
                     prompt += `  📝 [caption box]: "${d.text}"\n`;
                 } else {
-                    // Speech/thought: bubble tail points to the speaker, no name in bubble
                     const bubbleIcon = d.type === 'thought' ? '💭' : '💬';
                     prompt += `  ${bubbleIcon} [bubble tail → ${d.character}]: "${d.text}"\n`;
                 }
@@ -353,6 +384,7 @@ export const buildPageStoryboardPrompt = (
 
     prompt += `## IMPORTANT RULES\n`;
     prompt += `- Draw this as a SINGLE comic page with clear panel borders/gutters\n`;
+    prompt += `- **CRITICAL**: If reference images are provided, characters MUST visually match those reference images exactly. Do NOT invent new character designs.\n`;
     prompt += `- Speech bubbles (💬): round shape with a tail pointing to the speaker. Contains ONLY the dialogue text, NO character names inside the bubble.\n`;
     prompt += `- Thought bubbles (💭): cloud-shaped, tail pointing to thinker. Text only, no names.\n`;
     prompt += `- Narration (📝): rectangular caption boxes, no character names.\n`;
