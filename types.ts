@@ -8,13 +8,15 @@ export const GEMINI_MODELS = [
     'gemini-2.0-flash',
     'gemini-2.5-flash',
     'gemini-2.5-pro',
+    'gemini-3-pro',
 ] as const;
 export type GeminiModel = typeof GEMINI_MODELS[number];
 
 export const GEMINI_IMAGE_MODELS = [
     'gemini-2.0-flash-exp',
-    'gemini-2.5-flash-image',
+    'gemini-2.5-flash-preview-image',
     'gemini-3-pro-image-preview',
+    'gemini-3.1-flash-image',
 ] as const;
 export type GeminiImageModel = typeof GEMINI_IMAGE_MODELS[number];
 
