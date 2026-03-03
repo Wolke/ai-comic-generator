@@ -42,6 +42,7 @@ export interface ComicCharacter {
     imagePrompt: string;        // Anonymized image generation prompt
     imageBase64?: string;        // Character reference sheet
     isGeneratingImage?: boolean;
+    useTextDescription?: boolean; // Whether to include text description when image ref exists (default: true)
 }
 
 // ============ Comic Scene ============
@@ -51,6 +52,7 @@ export interface ComicScene {
     visualDescription: string;  // Detailed scene description (English)
     imageBase64?: string;        // Scene reference image
     isGeneratingImage?: boolean;
+    useTextDescription?: boolean; // Whether to include text description when image ref exists (default: true)
 }
 
 // ============ Panel Dialogue ============

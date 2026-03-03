@@ -378,12 +378,13 @@ export const generateFullPageImage = async (
     stylePreset: ImageStylePreset,
     customStyle: string,
     model: string = 'gemini-2.5-flash-image',
-    apiKey?: string
+    apiKey?: string,
+    customPrompt?: string, // Optional: user-edited prompt overrides auto-generated one
 ): Promise<string> => {
     const key = apiKey || process.env.API_KEY || '';
     if (!key) throw new Error("Gemini API Key is required for image generation.");
 
-    const storyboardPrompt = buildPageStoryboardPrompt(page, characters, scenes, stylePreset, customStyle);
+    const storyboardPrompt = customPrompt || buildPageStoryboardPrompt(page, characters, scenes, stylePreset, customStyle);
 
     // Collect all unique character refs and scene refs for this page
     const parts: any[] = [];
@@ -398,7 +399,13 @@ export const generateFullPageImage = async (
             const char = characters.find(c => c.name === charName);
             if (char?.imageBase64) {
                 addedCharRefs.add(charName);
-                refLabels.push(`Character "${charName}"`);
+                // Include text description based on useTextDescription toggle
+                const useText = char.useTextDescription !== false; // default true
+                if (useText) {
+                    refLabels.push(`Character "${charName}" — ${char.description}`);
+                } else {
+                    refLabels.push(`Character "${charName}" (use image reference only, ignore text description)`);
+                }
             }
         }
         // Gather scene images used on this page
@@ -406,7 +413,12 @@ export const generateFullPageImage = async (
             const scene = scenes.find(s => s.name === panel.sceneRef);
             if (scene?.imageBase64) {
                 addedSceneRefs.add(panel.sceneRef);
-                refLabels.push(`Scene "${panel.sceneRef}"`);
+                const useText = scene.useTextDescription !== false; // default true
+                if (useText) {
+                    refLabels.push(`Scene "${panel.sceneRef}" — ${scene.visualDescription}`);
+                } else {
+                    refLabels.push(`Scene "${panel.sceneRef}" (use image reference only, ignore text description)`);
+                }
             }
         }
     }

@@ -43,6 +43,9 @@ interface StudioPageProps {
     // Lightbox & Share
     onImageClick: (base64: string, alt?: string) => void;
     onShare: (base64: string) => void;
+    // Editable prompts
+    editedPagePrompts: Record<number, string>;
+    setEditedPagePrompts: React.Dispatch<React.SetStateAction<Record<number, string>>>;
 }
 
 export const StudioPage: React.FC<StudioPageProps> = ({
@@ -54,6 +57,7 @@ export const StudioPage: React.FC<StudioPageProps> = ({
     pages, setPages,
     comicInfo, setComicInfo,
     onImageClick, onShare,
+    editedPagePrompts, setEditedPagePrompts,
 }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -157,9 +161,11 @@ export const StudioPage: React.FC<StudioPageProps> = ({
         if (!page || !geminiApiKey) return;
         setGeneratingImageFor(`page:${pageIdx}`);
         try {
+            const customPrompt = editedPagePrompts[pageIdx] || undefined;
             const base64 = await generateFullPageImage(
                 page, characters, scenes,
-                imageStylePreset, customImageStyle, imageModel, geminiApiKey
+                imageStylePreset, customImageStyle, imageModel, geminiApiKey,
+                customPrompt,
             );
             setPages(prev => prev.map((p, i) =>
                 i === pageIdx ? { ...p, pageImageBase64: base64 } : p
@@ -189,8 +195,14 @@ export const StudioPage: React.FC<StudioPageProps> = ({
     };
 
     // ============ Storyboard Preview ============
-    const getPageStoryboardPreview = (pageIdx: number): string => {
-        return buildPageStoryboardPrompt(pages[pageIdx], characters, scenes, imageStylePreset, customImageStyle);
+    const getOrInitPagePrompt = (pageIdx: number): string => {
+        if (editedPagePrompts[pageIdx] !== undefined) {
+            return editedPagePrompts[pageIdx];
+        }
+        const generated = buildPageStoryboardPrompt(pages[pageIdx], characters, scenes, imageStylePreset, customImageStyle);
+        // Initialize on first access (lazy)
+        setEditedPagePrompts(prev => ({ ...prev, [pageIdx]: generated }));
+        return generated;
     };
 
     // ============ Clickable Image ============
@@ -344,6 +356,22 @@ export const StudioPage: React.FC<StudioPageProps> = ({
                                                 }} />
                                             </label>
                                         </div>
+                                        {/* useTextDescription toggle — only when image exists */}
+                                        {char.imageBase64 && (
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <div className="relative">
+                                                    <input type="checkbox" className="sr-only peer"
+                                                        checked={char.useTextDescription !== false}
+                                                        onChange={e => setCharacters(prev => prev.map(c =>
+                                                            c.id === char.id ? { ...c, useTextDescription: e.target.checked } : c
+                                                        ))}
+                                                    />
+                                                    <div className="w-8 h-4 bg-zinc-700 rounded-full peer-checked:bg-violet-600 transition-colors"></div>
+                                                    <div className="absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+                                                </div>
+                                                <span className="text-[11px] text-zinc-400">參考文字描述</span>
+                                            </label>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -392,6 +420,22 @@ export const StudioPage: React.FC<StudioPageProps> = ({
                                                 }} />
                                             </label>
                                         </div>
+                                        {/* useTextDescription toggle — only when image exists */}
+                                        {scene.imageBase64 && (
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <div className="relative">
+                                                    <input type="checkbox" className="sr-only peer"
+                                                        checked={scene.useTextDescription !== false}
+                                                        onChange={e => setScenes(prev => prev.map(s =>
+                                                            s.id === scene.id ? { ...s, useTextDescription: e.target.checked } : s
+                                                        ))}
+                                                    />
+                                                    <div className="w-8 h-4 bg-zinc-700 rounded-full peer-checked:bg-cyan-600 transition-colors"></div>
+                                                    <div className="absolute left-0.5 top-0.5 w-3 h-3 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+                                                </div>
+                                                <span className="text-[11px] text-zinc-400">參考文字描述</span>
+                                            </label>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -444,12 +488,27 @@ export const StudioPage: React.FC<StudioPageProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Prompt preview */}
+                                        {/* Editable Prompt */}
                                         {showPrompt && (
-                                            <div className="px-5 py-3 bg-zinc-950/50 border-b border-zinc-800">
-                                                <pre className="text-[11px] text-zinc-500 whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
-                                                    {getPageStoryboardPreview(pageIdx)}
-                                                </pre>
+                                            <div className="px-5 py-3 bg-zinc-950/50 border-b border-zinc-800 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] text-zinc-500 font-medium">Storyboard Prompt（可直接編輯）</span>
+                                                    <button
+                                                        onClick={() => {
+                                                            const generated = buildPageStoryboardPrompt(pages[pageIdx], characters, scenes, imageStylePreset, customImageStyle);
+                                                            setEditedPagePrompts(prev => ({ ...prev, [pageIdx]: generated }));
+                                                        }}
+                                                        className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                                                    >
+                                                        <RefreshCw size={10} /> 重設為自動生成
+                                                    </button>
+                                                </div>
+                                                <textarea
+                                                    value={getOrInitPagePrompt(pageIdx)}
+                                                    onChange={e => setEditedPagePrompts(prev => ({ ...prev, [pageIdx]: e.target.value }))}
+                                                    className="w-full text-[11px] text-zinc-400 bg-zinc-900/80 border border-zinc-700 rounded-lg p-3 font-mono resize-y focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                                    rows={12}
+                                                />
                                             </div>
                                         )}
 

@@ -173,6 +173,7 @@ const App: React.FC = () => {
     const [scenes, setScenes] = useState<ComicScene[]>([]);
     const [pages, setPages] = useState<ComicPageData[]>([]);
     const [comicInfo, setComicInfo] = useState<GeneratedComicInfo | null>(null);
+    const [editedPagePrompts, setEditedPagePrompts] = useState<Record<number, string>>({});
 
     // ============ Lightbox & Share State ============
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -299,6 +300,9 @@ const App: React.FC = () => {
                         // Lightbox & Share
                         onImageClick={openLightbox}
                         onShare={openShare}
+                        // Editable prompts
+                        editedPagePrompts={editedPagePrompts}
+                        setEditedPagePrompts={setEditedPagePrompts}
                     />
                 </div>
                 <div style={{ display: currentPage === 'config' ? 'block' : 'none' }}>
