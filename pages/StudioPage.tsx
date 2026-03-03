@@ -341,7 +341,14 @@ export const StudioPage: React.FC<StudioPageProps> = ({
                                         </div>
                                         <div>
                                             <h4 className="font-semibold text-white">{char.name}</h4>
-                                            <p className="text-xs text-zinc-400 mt-1 line-clamp-3">{char.description}</p>
+                                            <textarea
+                                                value={char.description}
+                                                onChange={e => setCharacters(prev => prev.map(c =>
+                                                    c.id === char.id ? { ...c, description: e.target.value } : c
+                                                ))}
+                                                rows={3}
+                                                className="w-full mt-1 text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-lg p-2 resize-y focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                            />
                                         </div>
                                         <div className="flex gap-2">
                                             <button onClick={() => handleGenerateCharacterImage(char.id)} disabled={!!generatingImageFor}
@@ -405,7 +412,14 @@ export const StudioPage: React.FC<StudioPageProps> = ({
                                         </div>
                                         <div>
                                             <h4 className="font-semibold text-white">{scene.name}</h4>
-                                            <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{scene.visualDescription}</p>
+                                            <textarea
+                                                value={scene.visualDescription}
+                                                onChange={e => setScenes(prev => prev.map(s =>
+                                                    s.id === scene.id ? { ...s, visualDescription: e.target.value } : s
+                                                ))}
+                                                rows={2}
+                                                className="w-full mt-1 text-xs text-zinc-400 bg-zinc-800/60 border border-zinc-700/50 rounded-lg p-2 resize-y focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                            />
                                         </div>
                                         <div className="flex gap-2">
                                             <button onClick={() => handleGenerateSceneImage(scene.id)} disabled={!!generatingImageFor}
