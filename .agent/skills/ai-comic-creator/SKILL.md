@@ -1,73 +1,165 @@
 ---
-name: AI Comic Creator Pipeline
-description: A conversational comic creation pipeline that leverages the project's internal TypeScript services to generate storyboards, reference images, and final comic pages.
+name: AI Comic Creator
+description: Generate and iteratively edit comic pages using the Gemini Image API with multi-turn conversations. Supports reference images for character/scene consistency.
 ---
 
-# AI Comic Creator Pipeline Skill
+# AI Comic Creator Skill
 
-This skill allows you (Antigravity) to act as a complete **Comic Studio Assistant**. Instead of just wrapping raw Gemini API endpoints, this skill calls the project's actual domain logic (`services/geminiService.ts`) via a CLI. 
-
-This means it perfectly replicates the Web App's behavior (structured output, prompt isolation, reference mapping) directly in your chat interface!
+This skill enables you to generate comic pages and iteratively edit them using the Gemini Image API, directly from the Antigravity chat.
 
 ## Prerequisites
 
-- The project must have `tsx` installed (`npm i -D tsx` was already executed).
-- The `GEMINI_API_KEY` environment variable must be set.
-- The script is located at: `.agent/skills/ai-comic-creator/scripts/comic-cli.ts`
-- Use `npx tsx` to run the script.
+- The user's **Gemini API Key** is needed. Check `localStorage` key `comic_gemini_api_key` via the browser, or ask the user directly. Store it in an environment variable for the scripts:
+  ```bash
+  export GEMINI_API_KEY="AIza..."
+  ```
 
-## The Conversational Workflow
+## Available Scripts
 
-As the AI assistant, you should guide the user through this multi-step process step-by-step, allowing them to intervene and edit at each stage.
+### 1. Generate a Comic Page
 
-### Step 1: Storyboard Generation
-
-When the user provides a story idea (e.g., "寫一個貓咪的冒險故事"):
-
-1. Save their story to a temporary text file.
-2. Run the `storyboard` command:
-```bash
-npx tsx .agent/skills/ai-comic-creator/scripts/comic-cli.ts storyboard /tmp/story.txt /tmp/comic/storyboard.json
-```
-3. Read the output JSON. **Summarize** the characters, scenes, and pages generated for the user in the chat.
-4. Ask the user: "你想直接開始生成角色與場景圖片，還是想先修改 `storyboard.json` 裡面的角色描述/分鏡說明？"
-
-### Step 2: Reference Image Generation
-
-Once the user approves or edits the storyboard:
-
-1. Run the `characters` and `scenes` commands:
-```bash
-npx tsx .agent/skills/ai-comic-creator/scripts/comic-cli.ts characters /tmp/comic/storyboard.json /tmp/comic/
-npx tsx .agent/skills/ai-comic-creator/scripts/comic-cli.ts scenes /tmp/comic/storyboard.json /tmp/comic/
-```
-*(You can append `--style manga` or other presets from types.ts to the command)*
-
-2. This will save `char_*.png` and `scene_*.png` in `/tmp/comic/` and embed their base64 inside the JSON automatically.
-3. Use the `view_file` tool to display these reference PNGs to the user in the chat!
-4. Ask: "這些角色與場景風格滿意嗎？如果覺得 OK，我們就開始生成最終漫畫頁面！"
-*(If they aren't satisfied, you can edit the JSON description and run the command again, it only generates images for characters without `imageBase64`).*
-
-### Step 3: Comic Page Compilation
-
-Once reference images are finalized:
-
-1. Run the `pages` command:
-```bash
-npx tsx .agent/skills/ai-comic-creator/scripts/comic-cli.ts pages /tmp/comic/storyboard.json /tmp/comic/
-```
-2. The engine will merge the storyboard layout and reference images, generating `page_1.png`, `page_2.png`.
-3. Show these magnificent final comic pages to the user!
-
-## Power Mode: Run All
-
-If the user just says "幫我一鍵生成一篇關於忍者狗的短篇漫畫", and doesn't want to be bothered with intermediate steps, you can run the entire pipeline at once:
+**Script**: `.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh`
 
 ```bash
-npx tsx .agent/skills/ai-comic-creator/scripts/comic-cli.ts run-all /tmp/story.txt /tmp/comic/ --style manga
+# Basic usage: generate from a prompt
+.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh \
+  --api-key "$GEMINI_API_KEY" \
+  --prompt "Generate a COMPLETE comic page with 4 panels..." \
+  --output /tmp/comic-page-1.png
+
+# With reference images (character/scene)
+.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh \
+  --api-key "$GEMINI_API_KEY" \
+  --prompt "Generate a COMPLETE comic page..." \
+  --ref-image /path/to/character.png "Character 咪咪" \
+  --ref-image /path/to/scene.png "Scene 咖啡廳" \
+  --output /tmp/comic-page-1.png
+
+# With specific model and aspect ratio
+.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh \
+  --api-key "$GEMINI_API_KEY" \
+  --model "gemini-2.0-flash-exp" \
+  --aspect-ratio "3:4" \
+  --prompt "..." \
+  --output /tmp/comic-page-1.png
 ```
 
-## Why this is better than a generic Image Skill
-1. **Consistency**: It uses the exact same `geminiService.ts` code as the Web App. The prompts, styles, and data structures are 100% synchronized.
-2. **Context**: The AI knows *who* Character A is, *what* they look like, and passes this context seamlessly to Gemini 3.1 Pro because the project's codebase already handles prompt isolation.
-3. **Editable State**: By writing `storyboard.json` to disk between steps, the user or you (the Agent) can intercept and tweak descriptions before spending time/money on image generation.
+### 2. Edit an Existing Image (Multi-Turn)
+
+**Script**: `.agent/skills/ai-comic-creator/scripts/edit-image.sh`
+
+```bash
+# Edit a previously generated image
+.agent/skills/ai-comic-creator/scripts/edit-image.sh \
+  --api-key "$GEMINI_API_KEY" \
+  --input /tmp/comic-page-1.png \
+  --instruction "把角色放大一點，背景改成夜晚" \
+  --output /tmp/comic-page-1-v2.png
+
+# Chain multiple edits (pass previous output as input)
+.agent/skills/ai-comic-creator/scripts/edit-image.sh \
+  --api-key "$GEMINI_API_KEY" \
+  --input /tmp/comic-page-1-v2.png \
+  --instruction "在右上角加一個月亮" \
+  --output /tmp/comic-page-1-v3.png
+```
+
+## Workflow: Generating a Comic Page from the Project
+
+When the user asks to generate a comic page, follow these steps:
+
+### Step 1: Gather Data from the Project
+
+The project stores comic data in its React state. To build the prompt, read the relevant source files:
+
+- **Storyboard prompt builder**: `services/geminiService.ts` → `buildPageStoryboardPrompt()`
+- **Prompt templates**: `services/promptTemplates.ts`
+- **Type definitions**: `types.ts` (ComicCharacter, ComicScene, ComicPageData)
+
+### Step 2: Build the Prompt
+
+Construct a storyboard prompt following the format in `buildPageStoryboardPrompt()`:
+
+```markdown
+Generate a COMPLETE comic/manga page with N panel(s).
+
+## CHARACTER IDENTITY
+- **角色名** (reference image provided — MUST match this appearance)
+
+## PAGE LAYOUT (N panels)
+
+### Panel 1 [Wide/landscape panel (full width)]
+**Characters**: Character A = 角色名
+**Visual**: Wide shot of The Scene. Character A is...
+**Dialogue bubbles**:
+  💬 [bubble tail → 角色名]: "對話文字"
+
+## STYLE
+Japanese manga style, black and white ink...
+
+## IMPORTANT RULES
+- Draw this as a SINGLE comic page with clear panel borders/gutters
+- **CRITICAL**: If reference images are provided, characters MUST visually match those reference images exactly.
+...
+```
+
+### Step 3: Generate the Image
+
+Use `generate-comic-page.sh` with any character/scene reference images found in the project.
+
+### Step 4: Show the Result
+
+Save the output image and embed it in the response using:
+```markdown
+![Comic Page 1](/tmp/comic-page-1.png)
+```
+
+### Step 5: Handle Follow-up Edits
+
+When the user asks to modify the generated image:
+1. Use `edit-image.sh` with the previous output as `--input`
+2. Save the new version with a version suffix (e.g., `-v2.png`)
+3. Show the updated image
+
+## API Details
+
+### Supported Models for Image Generation
+
+| Model | Best For |
+|-------|---------|
+| `gemini-2.0-flash-exp` | Fast generation, experimental |
+| `gemini-2.5-flash-image` | Speed + quality balance |
+| `gemini-3-pro-image-preview` | Best quality, 4K, Thinking mode |
+| `gemini-3.1-flash-image-preview` | **Recommended** — best all-around, multi-turn |
+
+### REST API Format for Multi-Turn Editing
+
+```json
+{
+  "contents": [
+    {
+      "role": "user",
+      "parts": [{ "text": "Original prompt..." }]
+    },
+    {
+      "role": "model",
+      "parts": [{ "inlineData": { "mimeType": "image/png", "data": "<base64_of_generated_image>" } }]
+    },
+    {
+      "role": "user",
+      "parts": [{ "text": "把角色放大一點" }]
+    }
+  ],
+  "generationConfig": {
+    "responseModalities": ["IMAGE"]
+  }
+}
+```
+
+### Key Notes
+
+- `responseModalities: ["IMAGE"]` → returns only image
+- `responseModalities: ["TEXT", "IMAGE"]` → returns text explanation + image
+- Aspect ratio options: `"1:1"`, `"3:4"`, `"4:3"`, `"9:16"`, `"16:9"`
+- Max inline image size: ~20MB base64
+- For multi-turn, always include ALL previous turns in the `contents` array
