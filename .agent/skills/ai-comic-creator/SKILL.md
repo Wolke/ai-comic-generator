@@ -1,84 +1,19 @@
 ---
 name: AI Comic Creator
-description: Generate and iteratively edit comic pages using the Gemini Image API with multi-turn conversations. Supports reference images for character/scene consistency.
+description: Generate and iteratively edit comic pages using the built-in generate_image tool. Supports reference images for character/scene consistency and multi-turn editing.
 ---
 
 # AI Comic Creator Skill
 
-This skill enables you to generate comic pages and iteratively edit them using the Gemini Image API, directly from the Antigravity chat.
+Generate comic pages and iteratively edit them directly from the Antigravity chat, using the built-in `generate_image` tool.
 
-## Prerequisites
-
-- The user's **Gemini API Key** is needed. Check `localStorage` key `comic_gemini_api_key` via the browser, or ask the user directly. Store it in an environment variable for the scripts:
-  ```bash
-  export GEMINI_API_KEY="AIza..."
-  ```
-
-## Available Scripts
+## Core Workflow
 
 ### 1. Generate a Comic Page
 
-**Script**: `.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh`
+Use the `generate_image` tool with a detailed storyboard prompt.
 
-```bash
-# Basic usage: generate from a prompt
-.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh \
-  --api-key "$GEMINI_API_KEY" \
-  --prompt "Generate a COMPLETE comic page with 4 panels..." \
-  --output /tmp/comic-page-1.png
-
-# With reference images (character/scene)
-.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh \
-  --api-key "$GEMINI_API_KEY" \
-  --prompt "Generate a COMPLETE comic page..." \
-  --ref-image /path/to/character.png "Character 咪咪" \
-  --ref-image /path/to/scene.png "Scene 咖啡廳" \
-  --output /tmp/comic-page-1.png
-
-# With specific model and aspect ratio
-.agent/skills/ai-comic-creator/scripts/generate-comic-page.sh \
-  --api-key "$GEMINI_API_KEY" \
-  --model "gemini-2.0-flash-exp" \
-  --aspect-ratio "3:4" \
-  --prompt "..." \
-  --output /tmp/comic-page-1.png
-```
-
-### 2. Edit an Existing Image (Multi-Turn)
-
-**Script**: `.agent/skills/ai-comic-creator/scripts/edit-image.sh`
-
-```bash
-# Edit a previously generated image
-.agent/skills/ai-comic-creator/scripts/edit-image.sh \
-  --api-key "$GEMINI_API_KEY" \
-  --input /tmp/comic-page-1.png \
-  --instruction "把角色放大一點，背景改成夜晚" \
-  --output /tmp/comic-page-1-v2.png
-
-# Chain multiple edits (pass previous output as input)
-.agent/skills/ai-comic-creator/scripts/edit-image.sh \
-  --api-key "$GEMINI_API_KEY" \
-  --input /tmp/comic-page-1-v2.png \
-  --instruction "在右上角加一個月亮" \
-  --output /tmp/comic-page-1-v3.png
-```
-
-## Workflow: Generating a Comic Page from the Project
-
-When the user asks to generate a comic page, follow these steps:
-
-### Step 1: Gather Data from the Project
-
-The project stores comic data in its React state. To build the prompt, read the relevant source files:
-
-- **Storyboard prompt builder**: `services/geminiService.ts` → `buildPageStoryboardPrompt()`
-- **Prompt templates**: `services/promptTemplates.ts`
-- **Type definitions**: `types.ts` (ComicCharacter, ComicScene, ComicPageData)
-
-### Step 2: Build the Prompt
-
-Construct a storyboard prompt following the format in `buildPageStoryboardPrompt()`:
+**Prompt structure** (follow `buildPageStoryboardPrompt` in `services/geminiService.ts`):
 
 ```markdown
 Generate a COMPLETE comic/manga page with N panel(s).
@@ -90,76 +25,78 @@ Generate a COMPLETE comic/manga page with N panel(s).
 
 ### Panel 1 [Wide/landscape panel (full width)]
 **Characters**: Character A = 角色名
-**Visual**: Wide shot of The Scene. Character A is...
+**Visual**: Wide shot. Character A is doing...
 **Dialogue bubbles**:
-  💬 [bubble tail → 角色名]: "對話文字"
+  💬 [bubble tail → 角色名]: "對話"
 
 ## STYLE
-Japanese manga style, black and white ink...
+Japanese manga style, black and white ink, screentone shading...
 
 ## IMPORTANT RULES
-- Draw this as a SINGLE comic page with clear panel borders/gutters
-- **CRITICAL**: If reference images are provided, characters MUST visually match those reference images exactly.
-...
+- Draw as a SINGLE comic page with panel borders/gutters
+- CRITICAL: Match reference images exactly for characters
+- Speech bubbles: round, tail to speaker, NO names inside
+- SFX: OVERSIZED bold stylized text
+- Keep bubble text short and legible
 ```
 
-### Step 3: Generate the Image
-
-Use `generate-comic-page.sh` with any character/scene reference images found in the project.
-
-### Step 4: Show the Result
-
-Save the output image and embed it in the response using:
-```markdown
-![Comic Page 1](/tmp/comic-page-1.png)
+**With reference images** — pass character/scene images via `ImagePaths`:
+```
+generate_image(
+  Prompt: "...",
+  ImageName: "comic_page_1",
+  ImagePaths: ["/path/to/character.png", "/path/to/scene.png"]
+)
 ```
 
-### Step 5: Handle Follow-up Edits
+### 2. Edit a Generated Image (Multi-Turn)
 
-When the user asks to modify the generated image:
-1. Use `edit-image.sh` with the previous output as `--input`
-2. Save the new version with a version suffix (e.g., `-v2.png`)
-3. Show the updated image
+To modify a previously generated image, pass it back via `ImagePaths` with an edit instruction:
 
-## API Details
-
-### Supported Models for Image Generation
-
-| Model | Best For |
-|-------|---------|
-| `gemini-2.0-flash-exp` | Fast generation, experimental |
-| `gemini-2.5-flash-image` | Speed + quality balance |
-| `gemini-3-pro-image-preview` | Best quality, 4K, Thinking mode |
-| `gemini-3.1-flash-image-preview` | **Recommended** — best all-around, multi-turn |
-
-### REST API Format for Multi-Turn Editing
-
-```json
-{
-  "contents": [
-    {
-      "role": "user",
-      "parts": [{ "text": "Original prompt..." }]
-    },
-    {
-      "role": "model",
-      "parts": [{ "inlineData": { "mimeType": "image/png", "data": "<base64_of_generated_image>" } }]
-    },
-    {
-      "role": "user",
-      "parts": [{ "text": "把角色放大一點" }]
-    }
-  ],
-  "generationConfig": {
-    "responseModalities": ["IMAGE"]
-  }
-}
+```
+generate_image(
+  Prompt: "Edit this comic page: 把角色放大一點，背景改成夜晚",
+  ImageName: "comic_page_1_v2",
+  ImagePaths: ["/path/to/previous/comic_page_1.png"]
+)
 ```
 
-### Key Notes
+Chain edits by always passing the latest version:
+```
+generate_image(
+  Prompt: "Edit this comic page: 再加一些星星在天空",
+  ImageName: "comic_page_1_v3",
+  ImagePaths: ["/path/to/comic_page_1_v2.png"]
+)
+```
 
-- `responseModalities: ["IMAGE"]` → returns only image
-- `responseModalities: ["TEXT", "IMAGE"]` → returns text explanation + image
-- Aspect ratio options: `"1:1"`, `"3:4"`, `"4:3"`, `"9:16"`, `"16:9"`
-- Max inline image size: ~20MB base64
-- For multi-turn, always include ALL previous turns in the `contents` array
+### 3. Reading Project Data
+
+The project at `/Users/chienhunglin/radio-drama-2` contains:
+
+| File | Data |
+|------|------|
+| `types.ts` | `ComicCharacter`, `ComicScene`, `ComicPageData` types |
+| `services/geminiService.ts` | `buildPageStoryboardPrompt()` — prompt builder |
+| `services/promptTemplates.ts` | Style presets, character/scene prompt templates |
+
+When user asks to generate from their project data, read the source files to understand the storyboard structure and build the prompt accordingly.
+
+## Fallback: Direct API Scripts
+
+For advanced use cases needing specific models, aspect ratios, or true multi-turn conversation history, use the shell scripts:
+
+- `scripts/generate-comic-page.sh` — Direct Gemini API call with `--ref-image` support
+- `scripts/edit-image.sh` — Multi-turn editing with full conversation history
+
+These require the user's Gemini API Key (stored in `localStorage` key `comic_gemini_api_key` or ask user).
+
+## Style Presets
+
+| Preset | Prompt Suffix |
+|--------|--------------|
+| Manga | Japanese manga style, black and white ink, screentone shading |
+| Manhwa | Korean manhwa webtoon style, full color, clean digital art |
+| Comic | American comic book style, bold outlines, vivid colors |
+| Watercolor | Watercolor illustration, soft edges, gentle colors |
+| Realistic | Realistic digital painting, cinematic lighting |
