@@ -7,13 +7,16 @@ description: Generate and iteratively edit comic pages using the built-in genera
 
 Generate comic pages and iteratively edit them directly from the Antigravity chat, using the built-in `generate_image` tool.
 
-## Core Workflow
+## Core Workflow: Generating a New Comic Page
 
-### 1. Generate a Comic Page
+**IMPORTANT**: ALWAYS follow a 2-step approval process for generating new comic pages. Do NOT generate the image immediately.
 
-Use the `generate_image` tool with a detailed storyboard prompt.
+### Step 1: Draft the Storyboard (Request User Approval)
 
-**Prompt structure** (follow `buildPageStoryboardPrompt` in `services/geminiService.ts`):
+1. When the user asks for a comic page, create an artifact (e.g., `comic_page_draft.md`) containing the proposed storyboard prompt.
+2. Use the `notify_user` tool to present this draft to the user for approval. Set `BlockedOnUser: true`.
+
+**Storyboard Draft Format** (follow `buildPageStoryboardPrompt` in `services/geminiService.ts`):
 
 ```markdown
 Generate a COMPLETE comic/manga page with N panel(s).
@@ -40,16 +43,21 @@ Japanese manga style, black and white ink, screentone shading...
 - Keep bubble text short and legible
 ```
 
+### Step 2: Generate the Image (Post-Approval)
+
+1. Only after the user approves the storyboard draft (or after you have applied their requested changes to the draft), proceed to generate the image.
+2. Use the `generate_image` tool with the *exact* approved storyboard text as the `Prompt`.
+
 **With reference images** — pass character/scene images via `ImagePaths`:
 ```
 generate_image(
-  Prompt: "...",
+  Prompt: "[Insert approved storyboard text here]",
   ImageName: "comic_page_1",
   ImagePaths: ["/path/to/character.png", "/path/to/scene.png"]
 )
 ```
 
-### 2. Edit a Generated Image (Multi-Turn)
+## Core Workflow: Multi-Turn Image Editing
 
 To modify a previously generated image, pass it back via `ImagePaths` with an edit instruction:
 
