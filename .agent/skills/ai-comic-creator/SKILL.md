@@ -7,16 +7,108 @@ description: Generate and iteratively edit comic pages using the built-in genera
 
 Generate comic pages and iteratively edit them directly from the Antigravity chat, using the built-in `generate_image` tool.
 
-## Core Workflow: Generating a New Comic Page
+## ⚠️ Core Principle: One Image Per Call
 
-**IMPORTANT**: ALWAYS follow a 2-step approval process for generating new comic pages. Do NOT generate the image immediately.
+AI image models perform poorly when given overly complex prompts. **ALWAYS decompose the work into small, focused tasks** and generate **one image per `generate_image` call**.
 
-### Step 1: Draft the Storyboard (Request User Approval)
+## Workflow: Generating a Multi-Page Comic
 
-1. When the user asks for a comic page, create an artifact (e.g., `comic_page_draft.md`) containing the proposed storyboard prompt.
-2. Use the `notify_user` tool to present this draft to the user for approval. Set `BlockedOnUser: true`.
+When the user requests a comic (e.g., "幫我畫一個 5 頁的漫畫"), follow this task-planning workflow:
 
-**Storyboard Draft Format** (follow `buildPageStoryboardPrompt` in `services/geminiService.ts`):
+### Phase 1: Planning — Create task.md & Draft Storyboard
+
+1. **Create `task.md`** to break down the entire comic into individual work items:
+
+```markdown
+# Comic Generation: [Title]
+
+## Characters
+- [ ] Generate reference image: Character A (角色名)
+- [ ] Generate reference image: Character B (角色名)
+
+## Scenes
+- [ ] Generate reference image: Scene 1 (場景名)
+
+## Pages
+- [ ] Page 1: [brief description] (4 panels)
+- [ ] Page 2: [brief description] (3 panels)
+- [ ] Page 3: [brief description] (5 panels)
+...
+```
+
+2. **Create `comic_storyboard_draft.md`** containing the full storyboard — ALL pages, ALL panels, with prompts written out. This is a **text-only planning document** for the user to review and approve.
+
+3. **Use `notify_user`** with `BlockedOnUser: true` to present both files for user approval. Do NOT generate any images yet.
+
+### Phase 2: Execution — Generate Images One by One
+
+After user approval, use `task_boundary` to track progress and generate images **sequentially**:
+
+#### Step 1: Generate Character Reference Images (one per call)
+
+```
+task_boundary(TaskName: "Generating Character References", ...)
+
+generate_image(
+  Prompt: "Full body character portrait of [detailed description]. Character concept art, clean white background.",
+  ImageName: "character_a_ref"
+)
+```
+
+Mark `[x]` in task.md. Move to next character.
+
+#### Step 2: Generate Scene Reference Images (one per call)
+
+```
+generate_image(
+  Prompt: "Environment background: [detailed description]. Wide establishing shot, atmospheric, no characters.",
+  ImageName: "scene_1_ref"
+)
+```
+
+Mark `[x]` in task.md. Move to next scene.
+
+#### Step 3: Generate Comic Pages (one page per call)
+
+```
+task_boundary(TaskName: "Generating Page 1", ...)
+
+generate_image(
+  Prompt: "[Single page storyboard prompt from the approved draft]",
+  ImageName: "comic_page_1",
+  ImagePaths: ["/path/to/character_a_ref.png", "/path/to/scene_1_ref.png"]
+)
+```
+
+After each page is generated:
+1. Mark `[x]` in task.md
+2. Use `notify_user` to show the result and ask the user if they want edits before moving on
+3. Only proceed to the next page after user confirms
+
+### Phase 3: Multi-Turn Editing (Per Page)
+
+When user wants to edit a specific page, pass the previous version back via `ImagePaths`:
+
+```
+generate_image(
+  Prompt: "Edit this comic page: [user's edit instruction]",
+  ImageName: "comic_page_1_v2",
+  ImagePaths: ["/path/to/comic_page_1.png"]
+)
+```
+
+For scene/character reference changes, pass both the comic and the new reference:
+```
+generate_image(
+  Prompt: "Edit this comic page: change the background to match the reference photo provided.",
+  ImageName: "comic_page_1_v3",
+  ImagePaths: ["/path/to/comic_page_1_v2.png", "/path/to/new_scene_ref.png"]
+)
+```
+
+## Single Page Storyboard Prompt Format
+
+Each page prompt should follow this structure (from `buildPageStoryboardPrompt` in `services/geminiService.ts`):
 
 ```markdown
 Generate a COMPLETE comic/manga page with N panel(s).
@@ -33,7 +125,7 @@ Generate a COMPLETE comic/manga page with N panel(s).
   💬 [bubble tail → 角色名]: "對話"
 
 ## STYLE
-Japanese manga style, black and white ink, screentone shading...
+[Style preset suffix]
 
 ## IMPORTANT RULES
 - Draw as a SINGLE comic page with panel borders/gutters
@@ -43,61 +135,15 @@ Japanese manga style, black and white ink, screentone shading...
 - Keep bubble text short and legible
 ```
 
-### Step 2: Generate the Image (Post-Approval)
+## Reading Project Data
 
-1. Only after the user approves the storyboard draft (or after you have applied their requested changes to the draft), proceed to generate the image.
-2. Use the `generate_image` tool with the *exact* approved storyboard text as the `Prompt`.
-
-**With reference images** — pass character/scene images via `ImagePaths`:
-```
-generate_image(
-  Prompt: "[Insert approved storyboard text here]",
-  ImageName: "comic_page_1",
-  ImagePaths: ["/path/to/character.png", "/path/to/scene.png"]
-)
-```
-
-## Core Workflow: Multi-Turn Image Editing
-
-To modify a previously generated image, pass it back via `ImagePaths` with an edit instruction:
-
-```
-generate_image(
-  Prompt: "Edit this comic page: 把角色放大一點，背景改成夜晚",
-  ImageName: "comic_page_1_v2",
-  ImagePaths: ["/path/to/previous/comic_page_1.png"]
-)
-```
-
-Chain edits by always passing the latest version:
-```
-generate_image(
-  Prompt: "Edit this comic page: 再加一些星星在天空",
-  ImageName: "comic_page_1_v3",
-  ImagePaths: ["/path/to/comic_page_1_v2.png"]
-)
-```
-
-### 3. Reading Project Data
-
-The project at `/Users/chienhunglin/radio-drama-2` contains:
+The project at the workspace root contains:
 
 | File | Data |
 |------|------|
 | `types.ts` | `ComicCharacter`, `ComicScene`, `ComicPageData` types |
 | `services/geminiService.ts` | `buildPageStoryboardPrompt()` — prompt builder |
 | `services/promptTemplates.ts` | Style presets, character/scene prompt templates |
-
-When user asks to generate from their project data, read the source files to understand the storyboard structure and build the prompt accordingly.
-
-## Fallback: Direct API Scripts
-
-For advanced use cases needing specific models, aspect ratios, or true multi-turn conversation history, use the shell scripts:
-
-- `scripts/generate-comic-page.sh` — Direct Gemini API call with `--ref-image` support
-- `scripts/edit-image.sh` — Multi-turn editing with full conversation history
-
-These require the user's Gemini API Key (stored in `localStorage` key `comic_gemini_api_key` or ask user).
 
 ## Style Presets
 
@@ -108,3 +154,12 @@ These require the user's Gemini API Key (stored in `localStorage` key `comic_gem
 | Comic | American comic book style, bold outlines, vivid colors |
 | Watercolor | Watercolor illustration, soft edges, gentle colors |
 | Realistic | Realistic digital painting, cinematic lighting |
+
+## Fallback: Direct API Scripts
+
+For advanced use cases needing specific models, aspect ratios, or true multi-turn conversation history:
+
+- `scripts/generate-comic-page.sh` — Direct Gemini API call with `--ref-image` support
+- `scripts/edit-image.sh` — Multi-turn editing with full conversation history
+
+These require the user's Gemini API Key (stored in `localStorage` key `comic_gemini_api_key` or ask user).
